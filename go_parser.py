@@ -3,7 +3,7 @@ import os
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
 
 
-def load_annotations(data_folder):
+def load_data(data_folder):
     # Ontology data
     go_file = os.path.join(data_folder, "go.obo")
     # Annotation files
@@ -113,6 +113,6 @@ def parse_obo(f):
 if __name__ == "__main__":
     import json
 
-    annotations = load_annotations("./")
+    annotations = load_data("./")
     for a in annotations:
         print(json.dumps(a, indent=2))
