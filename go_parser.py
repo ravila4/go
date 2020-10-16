@@ -1,5 +1,4 @@
 import os
-import tracemalloc
 
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
 
@@ -9,19 +8,29 @@ def load_annotations(data_folder):
     go_file = os.path.join(data_folder, "go.obo")
     # Annotation files
     go_human = os.path.join(data_folder, "goa_human.gaf.gz")
-
-    tracemalloc.start()
+    # Parse files
     goterms = parse_obo(go_file)
     docs = parse_gaf(go_human)
-    current, peak = tracemalloc.get_traced_memory()
-    print(f"Current memory usage is {current / 10**6}MB; Peak was {peak / 10**6}MB")
-    tracemalloc.stop()
 
     for _id, annotations in docs.items():
         # Add additional annotations
         annotations["name"] = goterms[_id]["id"]
         annotations["namespace"] = goterms[_id]["namespace"]
         annotations["def"] = goterms[_id]["def"]
+        # Convert gene sets to lists
+        if annotations.get("genes") is not None:
+            annotations["genes"]["uniprot"] = list(annotations["genes"]["uniprot"])
+            annotations["genes"]["gene_symbols"] = list(annotations["genes"]["gene_symbols"])
+            # Drop go term if set has fewer genes than threshold
+            if len(annotations["genes"]["uniprot"]) < 10:
+                continue
+        else:
+            # No genes in list
+            continue
+        for key in ["excluded_genes", "contributing_genes", "colocalized_genes"]:
+            if annotations.get(key) is not None:
+                annotations[key]["uniprot"] = list(annotations[key]["uniprot"])
+                annotations[key]["gene_symbols"] = list(annotations[key]["gene_symbols"])
         # Clean up data
         annotations = dict_sweep(annotations)
         annotations = unlist(annotations)
@@ -36,34 +45,38 @@ def parse_gaf(f):
         if not rec[0].startswith("!"):
             _id = rec[4]  # Primary ID is GO ID
             if genesets.get(_id) is None:
-                genesets[_id] = {}
+                genesets[_id] = {}  # Dict to hold annotations
                 genesets[_id]["_id"] = _id
                 genesets[_id]["is_public"] = True
-                genesets[_id]["genes"] = {}
                 genesets[_id]["taxid"] = rec[12].split("|")[0].replace("taxon:", "")
-            genes = genesets[_id]["genes"]
             gene_id = rec[1]
             gene_symbol = rec[2]
             qualifiers = rec[3].split("|")
+            # The gene can belong to several lists:
             if "NOT" in qualifiers:
+                # Genes that are similar to genes in go term, but should be excluded
                 genesets[_id].setdefault("excluded_genes", {})
                 excluded = genesets[_id]["excluded_genes"]
-                excluded.setdefault("uniprot", []).append(gene_id)
-                excluded.setdefault("gene_symbols", []).append(gene_symbol)
+                excluded.setdefault("uniprot", set()).add(gene_id)
+                excluded.setdefault("gene_symbols", set()).add(gene_symbol)
             if "contributes_to" in qualifiers:
+                # Genes that contribute to the specified go term
                 genesets[_id].setdefault("contributing_genes", {})
                 contributing = genesets[_id]["contributing_genes"]
-                contributing.setdefault("uniprot", []).append(gene_id)
-                contributing.setdefault("gene_symbols", []).append(gene_symbol)
+                contributing.setdefault("uniprot", set()).add(gene_id)
+                contributing.setdefault("gene_symbols", set()).add(gene_symbol)
             if "colocalizes_with" in qualifiers:
+                # Genes colocalized with specified go term
                 genesets[_id].setdefault("colocalized_genes", {})
                 colocalized = genesets[_id]["colocalized_genes"]
-                colocalized.setdefault("uniprot", []).append(gene_id)
-                colocalized.setdefault("gene_symbols", []).append(gene_symbol)
+                colocalized.setdefault("uniprot", set()).add(gene_id)
+                colocalized.setdefault("gene_symbols", set()).add(gene_id)
             else:
-                # No qualifiers, add gene to default list
-                genes.setdefault("uniprot", []).append(gene_id)
-                genes.setdefault("gene_symbols", []).append(gene_symbol)
+                # Default list: genes that belong to go term
+                genesets[_id].setdefault("genes", {})
+                genes = genesets[_id]["genes"]
+                genes.setdefault("uniprot", set()).add(gene_id)
+                genes.setdefault("gene_symbols", set()).add(gene_symbol)
     return genesets
 
 
@@ -102,5 +115,4 @@ if __name__ == "__main__":
 
     annotations = load_annotations("./")
     for a in annotations:
-        #pass
         print(json.dumps(a, indent=2))
