@@ -1,6 +1,6 @@
 {
     "version": "0.1",
-    "requires" : ["biothings", "requests"],
+    "requires" : ["biothings", "mygene", "requests"],
     "dumper": {
         "data_url": ["http://current.geneontology.org/annotations/goa_human.gaf.gz",
                      "http://current.geneontology.org/ontology/go.obo"],
