@@ -1,6 +1,7 @@
 import os
 
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
+import mygene
 
 
 def load_data(data_folder):
@@ -14,27 +15,55 @@ def load_data(data_folder):
 
     for _id, annotations in docs.items():
         # Add additional annotations
-        annotations["name"] = goterms[_id]["id"]
-        annotations["namespace"] = goterms[_id]["namespace"]
-        annotations["def"] = goterms[_id]["def"]
-        # Convert gene sets to lists
+        annotations["go.name"] = goterms[_id]["name"]
+        annotations["go.type"] = goterms[_id]["namespace"]
+        annotations["go.description"] = goterms[_id]["def"]
         if annotations.get("genes") is not None:
-            annotations["genes"]["uniprot"] = list(annotations["genes"]["uniprot"])
-            annotations["genes"]["gene_symbols"] = list(annotations["genes"]["gene_symbols"])
-            # Drop go term if set has fewer genes than threshold
-            if len(annotations["genes"]["uniprot"]) < 10:
-                continue
+            gene_dict = {}
+            # Convert set of tuples to lists
+            gene_dict["uniprot"] = [i for i, j in annotations["genes"]]
+            gene_dict["symbols"] = [j for i, j in annotations["genes"]]
+            # Fetch entrez id
+            taxid = annotations["taxid"]
+            gene_dict["NCBIgene"] = get_NCBI_id(gene_dict["symbols"],
+                                                  gene_dict["uniprot"], taxid)
+            annotations["genes"] = gene_dict
         else:
-            # No genes in list
+            # No genes in set
             continue
-        for key in ["excluded_genes", "contributing_genes", "colocalized_genes"]:
+        for key in ["go.excluded_genes", "go.contributing_genes",
+                    "go.colocalized_genes"]:
             if annotations.get(key) is not None:
-                annotations[key]["uniprot"] = list(annotations[key]["uniprot"])
-                annotations[key]["gene_symbols"] = list(annotations[key]["gene_symbols"])
+                gene_dict = {}
+                gene_dict["uniprot"] = [i for i, j in annotations[key]]
+                gene_dict["symbols"] = [j for i, j in annotations[key]]
+                annotations[key] = gene_dict
         # Clean up data
         annotations = dict_sweep(annotations)
         annotations = unlist(annotations)
         yield annotations
+
+
+def get_NCBI_id(symbols, uniprot_ids, taxid):
+    """Fetch NCBI id from gene symbols using mygene.info.
+    If a gene symbol matches more than one NCBI id, all duplicate ids are kept.
+    Gene symbols that are not found are retried using Uniprot ID.
+    """
+    mg = mygene.MyGeneInfo()
+    response = mg.querymany(symbols, scopes='symbol', fields='entrezgene',
+                            species=taxid, returnall=True)
+    entrez = []
+    for out in response['out']:
+        if out.get("entrezgene") is not None:
+            entrez.append(out["entrezgene"])
+    # Retry missing
+    retry = [uniprot_ids[symbols.index(k)] for k in response["missing"]]
+    response = mg.querymany(retry, scopes='uniprot', fields='entrezgene',
+                            species=taxid, returnall=True)
+    for out in response['out']:
+        if out.get("entrezgene") is not None:
+            entrez.append(out["entrezgene"])
+    return entrez
 
 
 def parse_gaf(f):
@@ -48,47 +77,42 @@ def parse_gaf(f):
                 genesets[_id] = {}  # Dict to hold annotations
                 genesets[_id]["_id"] = _id
                 genesets[_id]["is_public"] = True
-                genesets[_id]["taxid"] = rec[12].split("|")[0].replace("taxon:", "")
+                genesets[_id]["taxid"] = rec[12].split("|")[0].replace(
+                        "taxon:", "")
             gene_id = rec[1]
-            gene_symbol = rec[2]
+            symbol = rec[2]
             qualifiers = rec[3].split("|")
-            # The gene can belong to several lists:
+            # The gene can belong to several sets:
             if "NOT" in qualifiers:
-                # Genes that are similar to genes in go term, but should be excluded
-                genesets[_id].setdefault("excluded_genes", {})
-                excluded = genesets[_id]["excluded_genes"]
-                excluded.setdefault("uniprot", set()).add(gene_id)
-                excluded.setdefault("gene_symbols", set()).add(gene_symbol)
+                # Genes similar to genes in go term, but should be excluded
+                genesets[_id].setdefault("go.excluded_genes", set()).add(
+                        (gene_id, symbol))
             if "contributes_to" in qualifiers:
                 # Genes that contribute to the specified go term
-                genesets[_id].setdefault("contributing_genes", {})
-                contributing = genesets[_id]["contributing_genes"]
-                contributing.setdefault("uniprot", set()).add(gene_id)
-                contributing.setdefault("gene_symbols", set()).add(gene_symbol)
+                genesets[_id].setdefault("go.contributing_genes", set()).add(
+                        (gene_id, symbol))
             if "colocalizes_with" in qualifiers:
                 # Genes colocalized with specified go term
-                genesets[_id].setdefault("colocalized_genes", {})
-                colocalized = genesets[_id]["colocalized_genes"]
-                colocalized.setdefault("uniprot", set()).add(gene_id)
-                colocalized.setdefault("gene_symbols", set()).add(gene_id)
+                genesets[_id].setdefault("go.colocalized_genes", set()).add(
+                        (gene_id, symbol))
             else:
                 # Default list: genes that belong to go term
-                genesets[_id].setdefault("genes", {})
-                genes = genesets[_id]["genes"]
-                genes.setdefault("uniprot", set()).add(gene_id)
-                genes.setdefault("gene_symbols", set()).add(gene_symbol)
+                genesets[_id].setdefault("genes", set()).add(
+                        (gene_id, symbol))
     return genesets
 
 
 def parse_obo(f):
     """Parse gene ontology (.obo) file.
-    This file contains description and metadata for individual GO terms."""
+    This file contains description and metadata for individual GO terms.
+    Return a dictionary of GO term metadata with GO ids as keys.
+    """
     go_terms = {}
     with open(f, 'r') as data:
-        termflag = False
+        termflag = False  # Keep track of beginning/end of each entry
         for line in data:
             line = line.replace("\n", "")
-            if line == "":
+            if line == "":  # End of entry
                 if termflag:
                     _id = data['id']
                     go_terms[_id] = data
@@ -104,7 +128,7 @@ def parse_obo(f):
                 if value.find("!") != -1:
                     value = value.split(" ! ", 1)[0]
                 data[key] = value
-            if line.startswith("[Term]"):
+            if line.startswith("[Term]"):  # Start of new entry
                 termflag = True
                 data = {}
     return go_terms
@@ -113,6 +137,7 @@ def parse_obo(f):
 if __name__ == "__main__":
     import json
 
-    annotations = load_data("./")
+    annotations = load_data("./test_data")
     for a in annotations:
+        # pass
         print(json.dumps(a, indent=2))
