@@ -16,8 +16,8 @@ def load_data(data_folder):
     # Join all gene sets and get NCBI IDs
     all_genes = set()
     for _id, annotations in docs.items():
-        for key in ["genes", "go.excluded_genes", "go.contributing_genes",
-                    "go.colocalized_genes"]:
+        for key in ["genes", "go_excluded_genes", "go_contributing_genes",
+                    "go_colocalized_genes"]:
             if annotations.get(key) is not None:
                 all_genes = all_genes | annotations[key]
     uniprot = [i for i, j in all_genes]
@@ -28,9 +28,9 @@ def load_data(data_folder):
     # Add additional annotaions
     for _id, annotations in docs.items():
         # Add additional annotations
-        annotations["go.name"] = goterms[_id]["name"]
-        annotations["go.type"] = goterms[_id]["namespace"]
-        annotations["go.description"] = goterms[_id]["def"]
+        annotations["go_name"] = goterms[_id]["name"]
+        annotations["go_type"] = goterms[_id]["namespace"]
+        annotations["go_description"] = goterms[_id]["def"]
         if annotations.get("genes") is not None:
             gene_dict = {}
             # Convert set of tuples to lists
@@ -46,8 +46,8 @@ def load_data(data_folder):
         else:
             # No genes in set
             continue
-        for key in ["go.excluded_genes", "go.contributing_genes",
-                    "go.colocalized_genes"]:
+        for key in ["go_excluded_genes", "go_contributing_genes",
+                    "go_colocalized_genes"]:
             if annotations.get(key) is not None:
                 gene_dict = {}
                 gene_dict["uniprot"] = [i for i, j in annotations[key]]
@@ -111,15 +111,15 @@ def parse_gaf(f):
             # The gene can belong to several sets:
             if "NOT" in qualifiers:
                 # Genes similar to genes in go term, but should be excluded
-                genesets[_id].setdefault("go.excluded_genes", set()).add(
+                genesets[_id].setdefault("go_excluded_genes", set()).add(
                         (gene_id, symbol))
             if "contributes_to" in qualifiers:
                 # Genes that contribute to the specified go term
-                genesets[_id].setdefault("go.contributing_genes", set()).add(
+                genesets[_id].setdefault("go_contributing_genes", set()).add(
                         (gene_id, symbol))
             if "colocalizes_with" in qualifiers:
                 # Genes colocalized with specified go term
-                genesets[_id].setdefault("go.colocalized_genes", set()).add(
+                genesets[_id].setdefault("go_colocalized_genes", set()).add(
                         (gene_id, symbol))
             else:
                 # Default list: genes that belong to go term
