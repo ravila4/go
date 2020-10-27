@@ -1,3 +1,4 @@
+from datetime import date
 import os
 
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
@@ -28,6 +29,8 @@ def load_data(data_folder):
     # Add additional annotaions
     for _id, annotations in docs.items():
         # Add additional annotations
+        annotations["creator"] = "Ricardo Avila"  # Script author
+        annotations["date"] = date.today().strftime("%B %d, %Y")
         annotations["go_name"] = goterms[_id]["name"]
         annotations["go_type"] = goterms[_id]["namespace"]
         annotations["go_description"] = goterms[_id]["def"]
