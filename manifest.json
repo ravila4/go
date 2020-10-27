@@ -3,6 +3,10 @@
     "requires" : ["biothings", "mygene", "requests"],
     "dumper": {
         "data_url": ["http://current.geneontology.org/annotations/goa_human.gaf.gz",
+                     "http://current.geneontology.org/annotations/goa_dog.gaf.gz",
+                     "http://current.geneontology.org/annotations/goa_pig.gaf.gz",
+                     "http://current.geneontology.org/annotations/goa_cow.gaf.gz",
+                     "http://current.geneontology.org/annotations/goa_chicken.gaf.gz",
                      "http://current.geneontology.org/ontology/go.obo"],
         "uncompress": false,
         "release": "version:get_release"

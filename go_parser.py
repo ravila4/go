@@ -1,4 +1,5 @@
 from datetime import date
+import glob
 import os
 
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
@@ -8,71 +9,72 @@ import mygene
 def load_data(data_folder):
     # Ontology data
     go_file = os.path.join(data_folder, "go.obo")
-    # Gene annotation files
-    go_human = os.path.join(data_folder, "goa_human.gaf.gz")
-    # Parse files
     goterms = parse_obo(go_file)
-    docs = parse_gaf(go_human)
 
-    # Join all gene sets and get NCBI IDs
-    all_genes = set()
-    for _id, annotations in docs.items():
-        for key in ["genes", "excluded_genes", "contributing_genes",
-                    "colocalized_genes"]:
-            if annotations.get(key) is not None:
-                all_genes = all_genes | annotations[key]
-    uniprot = [i for i, j in all_genes]
-    symbols = [j for i, j in all_genes]
-    taxid = annotations["taxid"]
-    NCBI_dict = get_NCBI_id(symbols, uniprot, taxid)
+    # Gene annotation files
+    for f in glob.glob(os.path.join(data_folder, "*.gaf.gz")):
+        docs = parse_gaf(f)
 
-    # Add additional annotations
-    for _id, annotations in docs.items():
+        # Join all gene sets and get NCBI IDs
+        all_genes = set()
+        for _id, annotations in docs.items():
+            for key in ["genes", "excluded_genes", "contributing_genes",
+                        "colocalized_genes"]:
+                if annotations.get(key) is not None:
+                    all_genes = all_genes | annotations[key]
+        uniprot = [i for i, j in all_genes]
+        symbols = [j for i, j in all_genes]
+        taxid = annotations["taxid"]
+        NCBI_dict = get_NCBI_id(symbols, uniprot, taxid)
+
         # Add additional annotations
-        annotations["creator"] = "Ricardo Avila"  # Script author
-        annotations["date"] = date.today().strftime("%B %d, %Y")
-        annotations["go"] = {}
-        annotations["go"]["id"] = _id
-        annotations["go"]["name"] = goterms[_id]["name"]
-        annotations["go"]["type"] = goterms[_id]["namespace"]
-        annotations["go"]["description"] = goterms[_id]["def"]
-        if annotations.get("genes") is not None:
-            gene_dict = {}
-            # Convert set of tuples to lists
-            gene_dict["uniprot"] = [i for i, j in annotations["genes"]]
-            gene_dict["symbols"] = [j for i, j in annotations["genes"]]
-            gene_dict["NCBIgene"] = []
-            for i, j in annotations["genes"]:
-                if NCBI_dict.get(i):
-                    gene_dict["NCBIgene"].append(NCBI_dict[i])
-                elif NCBI_dict.get(j):
-                    gene_dict["NCBIgene"].append(NCBI_dict[j])
-            annotations["genes"] = gene_dict
-        else:
-            # No genes in set
-            continue
-        for key in ["excluded_genes", "contributing_genes",
-                    "colocalized_genes"]:
-            if annotations.get(key) is not None:
+        for _id, annotations in docs.items():
+            # Add additional annotations
+            annotations["creator"] = "Ricardo Avila"  # Script author
+            annotations["date"] = date.today().strftime("%B %d, %Y")
+            annotations["go"] = {}
+            annotations["go"]["id"] = _id
+            annotations["go"]["name"] = goterms[_id]["name"]
+            annotations["go"]["type"] = goterms[_id]["namespace"]
+            annotations["go"]["description"] = goterms[_id]["def"]
+            if annotations.get("genes") is not None:
                 gene_dict = {}
-                gene_dict["uniprot"] = [i for i, j in annotations[key]]
-                gene_dict["symbols"] = [j for i, j in annotations[key]]
+                # Convert set of tuples to lists
+                gene_dict["uniprot"] = [i for i, j in annotations["genes"]]
+                gene_dict["symbols"] = [j for i, j in annotations["genes"]]
                 gene_dict["NCBIgene"] = []
-                for i, j in annotations[key]:
+                for i, j in annotations["genes"]:
                     if NCBI_dict.get(i):
                         gene_dict["NCBIgene"].append(NCBI_dict[i])
                     elif NCBI_dict.get(j):
                         gene_dict["NCBIgene"].append(NCBI_dict[j])
-                annotations["go"][key] = gene_dict
-        # Clean up data
-        annotations = dict_sweep(annotations)
-        annotations = unlist(annotations)
-        # Reorder keys
-        new_annotations = {}
-        keys = ["_id", "date", "creator", "is_public", "taxid", "genes", "go"]
-        for key in keys:
-            new_annotations[key] = annotations[key]
-        yield new_annotations
+                annotations["genes"] = gene_dict
+            else:
+                # No genes in set
+                continue
+            for key in ["excluded_genes", "contributing_genes",
+                        "colocalized_genes"]:
+                if annotations.get(key) is not None:
+                    gene_dict = {}
+                    gene_dict["uniprot"] = [i for i, j in annotations[key]]
+                    gene_dict["symbols"] = [j for i, j in annotations[key]]
+                    gene_dict["NCBIgene"] = []
+                    for i, j in annotations[key]:
+                        if NCBI_dict.get(i):
+                            gene_dict["NCBIgene"].append(NCBI_dict[i])
+                        elif NCBI_dict.get(j):
+                            gene_dict["NCBIgene"].append(NCBI_dict[j])
+                    annotations["go"][key] = gene_dict
+            # Clean up data
+            annotations = dict_sweep(annotations)
+            annotations = unlist(annotations)
+            # Reorder keys
+            annotations["_id"] = annotations["_id"] + "-" + annotations["taxid"]
+            new_annotations = {}
+            keys = ["_id", "date", "creator", "is_public", "taxid", "genes", "go"]
+            for key in keys:
+                new_annotations[key] = annotations[key]
+            yield new_annotations
 
 
 def get_NCBI_id(symbols, uniprot_ids, taxid):
