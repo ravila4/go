@@ -17,8 +17,8 @@ def load_data(data_folder):
     # Join all gene sets and get NCBI IDs
     all_genes = set()
     for _id, annotations in docs.items():
-        for key in ["genes", "go_excluded_genes", "go_contributing_genes",
-                    "go_colocalized_genes"]:
+        for key in ["genes", "excluded_genes", "contributing_genes",
+                    "colocalized_genes"]:
             if annotations.get(key) is not None:
                 all_genes = all_genes | annotations[key]
     uniprot = [i for i, j in all_genes]
@@ -26,14 +26,16 @@ def load_data(data_folder):
     taxid = annotations["taxid"]
     NCBI_dict = get_NCBI_id(symbols, uniprot, taxid)
 
-    # Add additional annotaions
+    # Add additional annotations
     for _id, annotations in docs.items():
         # Add additional annotations
         annotations["creator"] = "Ricardo Avila"  # Script author
         annotations["date"] = date.today().strftime("%B %d, %Y")
-        annotations["go_name"] = goterms[_id]["name"]
-        annotations["go_type"] = goterms[_id]["namespace"]
-        annotations["go_description"] = goterms[_id]["def"]
+        annotations["go"] = {}
+        annotations["go"]["id"] = _id
+        annotations["go"]["name"] = goterms[_id]["name"]
+        annotations["go"]["type"] = goterms[_id]["namespace"]
+        annotations["go"]["description"] = goterms[_id]["def"]
         if annotations.get("genes") is not None:
             gene_dict = {}
             # Convert set of tuples to lists
@@ -49,8 +51,8 @@ def load_data(data_folder):
         else:
             # No genes in set
             continue
-        for key in ["go_excluded_genes", "go_contributing_genes",
-                    "go_colocalized_genes"]:
+        for key in ["excluded_genes", "contributing_genes",
+                    "colocalized_genes"]:
             if annotations.get(key) is not None:
                 gene_dict = {}
                 gene_dict["uniprot"] = [i for i, j in annotations[key]]
@@ -61,11 +63,16 @@ def load_data(data_folder):
                         gene_dict["NCBIgene"].append(NCBI_dict[i])
                     elif NCBI_dict.get(j):
                         gene_dict["NCBIgene"].append(NCBI_dict[j])
-                annotations[key] = gene_dict
+                annotations["go"][key] = gene_dict
         # Clean up data
         annotations = dict_sweep(annotations)
         annotations = unlist(annotations)
-        yield annotations
+        # Reorder keys
+        new_annotations = {}
+        keys = ["_id", "date", "creator", "is_public", "taxid", "genes", "go"]
+        for key in keys:
+            new_annotations[key] = annotations[key]
+        yield new_annotations
 
 
 def get_NCBI_id(symbols, uniprot_ids, taxid):
@@ -114,15 +121,15 @@ def parse_gaf(f):
             # The gene can belong to several sets:
             if "NOT" in qualifiers:
                 # Genes similar to genes in go term, but should be excluded
-                genesets[_id].setdefault("go_excluded_genes", set()).add(
+                genesets[_id].setdefault("excluded_genes", set()).add(
                         (gene_id, symbol))
             if "contributes_to" in qualifiers:
                 # Genes that contribute to the specified go term
-                genesets[_id].setdefault("go_contributing_genes", set()).add(
+                genesets[_id].setdefault("contributing_genes", set()).add(
                         (gene_id, symbol))
             if "colocalizes_with" in qualifiers:
                 # Genes colocalized with specified go term
-                genesets[_id].setdefault("go_colocalized_genes", set()).add(
+                genesets[_id].setdefault("colocalized_genes", set()).add(
                         (gene_id, symbol))
             else:
                 # Default list: genes that belong to go term
