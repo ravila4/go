@@ -7,12 +7,25 @@ import mygene
 def load_data(data_folder):
     # Ontology data
     go_file = os.path.join(data_folder, "go.obo")
-    # Annotation files
+    # Gene annotation files
     go_human = os.path.join(data_folder, "goa_human.gaf.gz")
     # Parse files
     goterms = parse_obo(go_file)
     docs = parse_gaf(go_human)
 
+    # Join all gene sets and get NCBI IDs
+    all_genes = set()
+    for _id, annotations in docs.items():
+        for key in ["genes", "go.excluded_genes", "go.contributing_genes",
+                    "go.colocalized_genes"]:
+            if annotations.get(key) is not None:
+                all_genes = all_genes | annotations[key]
+    uniprot = [i for i, j in all_genes]
+    symbols = [j for i, j in all_genes]
+    taxid = annotations["taxid"]
+    NCBI_dict = get_NCBI_id(symbols, uniprot, taxid)
+
+    # Add additional annotaions
     for _id, annotations in docs.items():
         # Add additional annotations
         annotations["go.name"] = goterms[_id]["name"]
@@ -23,10 +36,12 @@ def load_data(data_folder):
             # Convert set of tuples to lists
             gene_dict["uniprot"] = [i for i, j in annotations["genes"]]
             gene_dict["symbols"] = [j for i, j in annotations["genes"]]
-            # Fetch entrez id
-            taxid = annotations["taxid"]
-            gene_dict["NCBIgene"] = get_NCBI_id(gene_dict["symbols"],
-                                                  gene_dict["uniprot"], taxid)
+            gene_dict["NCBIgene"] = []
+            for i, j in annotations["genes"]:
+                if NCBI_dict.get(i):
+                    gene_dict["NCBIgene"].append(NCBI_dict[i])
+                elif NCBI_dict.get(j):
+                    gene_dict["NCBIgene"].append(NCBI_dict[j])
             annotations["genes"] = gene_dict
         else:
             # No genes in set
@@ -37,6 +52,12 @@ def load_data(data_folder):
                 gene_dict = {}
                 gene_dict["uniprot"] = [i for i, j in annotations[key]]
                 gene_dict["symbols"] = [j for i, j in annotations[key]]
+                gene_dict["NCBIgene"] = []
+                for i, j in annotations[key]:
+                    if NCBI_dict.get(i):
+                        gene_dict["NCBIgene"].append(NCBI_dict[i])
+                    elif NCBI_dict.get(j):
+                        gene_dict["NCBIgene"].append(NCBI_dict[j])
                 annotations[key] = gene_dict
         # Clean up data
         annotations = dict_sweep(annotations)
@@ -52,18 +73,23 @@ def get_NCBI_id(symbols, uniprot_ids, taxid):
     mg = mygene.MyGeneInfo()
     response = mg.querymany(symbols, scopes='symbol', fields='entrezgene',
                             species=taxid, returnall=True)
-    entrez = []
+    ncbi_ids = {}
     for out in response['out']:
         if out.get("entrezgene") is not None:
-            entrez.append(out["entrezgene"])
+            query = out["query"]
+            entrezgene = out["entrezgene"]
+            ncbi_ids.setdefault(query, []).append(entrezgene)
     # Retry missing
     retry = [uniprot_ids[symbols.index(k)] for k in response["missing"]]
     response = mg.querymany(retry, scopes='uniprot', fields='entrezgene',
                             species=taxid, returnall=True)
     for out in response['out']:
         if out.get("entrezgene") is not None:
-            entrez.append(out["entrezgene"])
-    return entrez
+            query = out["query"]
+            entrezgene = out["entrezgene"]
+            ncbi_ids.setdefault(query, []).append(entrezgene)
+    ncbi_ids = unlist(ncbi_ids)
+    return ncbi_ids
 
 
 def parse_gaf(f):
@@ -139,5 +165,4 @@ if __name__ == "__main__":
 
     annotations = load_data("./test_data")
     for a in annotations:
-        # pass
         print(json.dumps(a, indent=2))
