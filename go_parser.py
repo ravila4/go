@@ -31,7 +31,7 @@ def load_data(data_folder):
         for _id, annotations in docs.items():
             # Add additional annotations
             annotations["creator"] = "Ricardo Avila"  # Script author
-            annotations["date"] = date.today().strftime("%B %d, %Y")
+            annotations["date"] = date.today().isoformat()
             annotations["go"] = {}
             annotations["go"]["id"] = _id
             annotations["go"]["name"] = goterms[_id]["name"]
