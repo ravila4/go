@@ -42,12 +42,12 @@ def load_data(data_folder):
                 # Convert set of tuples to lists
                 gene_dict["uniprot"] = [i for i, j in annotations["genes"]]
                 gene_dict["symbols"] = [j for i, j in annotations["genes"]]
-                gene_dict["NCBIgene"] = []
+                gene_dict["ncbigene"] = []
                 for i, j in annotations["genes"]:
                     if NCBI_dict.get(i):
-                        gene_dict["NCBIgene"].append(NCBI_dict[i])
+                        gene_dict["ncbigene"].append(NCBI_dict[i])
                     elif NCBI_dict.get(j):
-                        gene_dict["NCBIgene"].append(NCBI_dict[j])
+                        gene_dict["ncbigene"].append(NCBI_dict[j])
                 annotations["genes"] = gene_dict
             else:
                 # No genes in set
@@ -58,12 +58,12 @@ def load_data(data_folder):
                     gene_dict = {}
                     gene_dict["uniprot"] = [i for i, j in annotations[key]]
                     gene_dict["symbols"] = [j for i, j in annotations[key]]
-                    gene_dict["NCBIgene"] = []
+                    gene_dict["ncbigene"] = []
                     for i, j in annotations[key]:
                         if NCBI_dict.get(i):
-                            gene_dict["NCBIgene"].append(NCBI_dict[i])
+                            gene_dict["ncbigene"].append(NCBI_dict[i])
                         elif NCBI_dict.get(j):
-                            gene_dict["NCBIgene"].append(NCBI_dict[j])
+                            gene_dict["ncbigene"].append(NCBI_dict[j])
                     annotations["go"][key] = gene_dict
             # Clean up data
             annotations = dict_sweep(annotations)
