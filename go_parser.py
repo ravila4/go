@@ -30,7 +30,7 @@ def load_data(data_folder):
         # Add additional annotations
         for _id, annotations in docs.items():
             # Add additional annotations
-            annotations["creator"] = "Ricardo Avila"  # Script author
+            annotations["creator"] = "Ricardo Avila"
             annotations["date"] = date.today().isoformat()
             annotations["go"] = {}
             annotations["go"]["id"] = _id
@@ -140,28 +140,31 @@ def parse_obo(f):
     """
     go_terms = {}
     with open(f, 'r') as data:
-        termflag = False  # Keep track of beginning/end of each entry
+        record = False  # True if line is part of a record (not a header)
+        term_data = {}
         for line in data:
             line = line.replace("\n", "")
-            if line == "":  # End of entry
-                if termflag:
-                    _id = data['id']
-                    go_terms[_id] = data
-                    alt_id = data.get("alt_id")
+            # End of a record
+            if line == "":
+                if record:
+                    _id = term_data['id']
+                    go_terms[_id] = term_data
+                    alt_id = term_data.get("alt_id")
                     if alt_id is not None:
                         # Add a duplicate entry with alt_id as key
-                        go_terms[alt_id] = data
-                termflag = False
-            if termflag:
+                        go_terms[alt_id] = term_data
+                record = False
+            #  Line is part of a record
+            if record:
                 key, value = line.split(": ", 1)
                 value = value.replace('"', '')
-                # Remove comments
-                if value.find("!") != -1:
+                if value.find("!") != -1:               # Remove comments
                     value = value.split(" ! ", 1)[0]
-                data[key] = value
-            if line.startswith("[Term]"):  # Start of new entry
-                termflag = True
-                data = {}
+                term_data[key] = value               # Store key-value pair
+            # Start of record
+            if line.startswith("[Term]"):
+                record = True
+                term_data = {}
     return go_terms
 
 
