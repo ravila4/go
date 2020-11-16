@@ -1,4 +1,5 @@
 import glob
+import json
 import os
 
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
@@ -7,8 +8,8 @@ import mygene
 
 def load_data(data_folder):
     # Ontology data
-    go_file = os.path.join(data_folder, "go.obo")
-    goterms = parse_obo(go_file)
+    go_file = os.path.join(data_folder, "go.json")
+    goterms = parse_ontology(go_file)
 
     # Gene annotation files
     for f in glob.glob(os.path.join(data_folder, "*.gaf.gz")):
@@ -24,16 +25,12 @@ def load_data(data_folder):
         uniprot = [i for i, j in all_genes]
         symbols = [j for i, j in all_genes]
         taxid = annotations["taxid"]
-        NCBI_dict = get_NCBI_id(symbols, uniprot, taxid)
+        NCBI_dict = {} #get_NCBI_id(symbols, uniprot, taxid)
 
         # Add additional annotations
         for _id, annotations in docs.items():
             # Add additional annotations
-            annotations["go"] = {}
-            annotations["go"]["id"] = _id
-            annotations["go"]["name"] = goterms[_id]["name"]
-            annotations["go"]["type"] = goterms[_id]["namespace"]
-            annotations["go"]["description"] = goterms[_id]["def"]
+            annotations["go"] = goterms[_id]
             if annotations.get("genes") is not None:
                 gene_dict = [{"uniprot": i, "symbol": j}
                              for i, j in annotations["genes"]]
@@ -59,13 +56,8 @@ def load_data(data_folder):
             # Clean up data
             annotations = dict_sweep(annotations)
             annotations = unlist(annotations)
-            # Reorder keys
-            annotations["_id"] = annotations["_id"] + "-" + annotations["taxid"]
-            new_annotations = {}
-            keys = ["_id", "date", "creator", "is_public", "taxid", "genes", "go"]
-            for key in keys:
-                new_annotations[key] = annotations[key]
-            yield new_annotations
+            annotations["_id"] = annotations["_id"] + "_" + annotations["taxid"]
+            yield annotations
 
 
 def get_NCBI_id(symbols, uniprot_ids, taxid):
@@ -79,17 +71,17 @@ def get_NCBI_id(symbols, uniprot_ids, taxid):
     ncbi_ids = {}
     for out in response['out']:
         if out.get("entrezgene") is not None:
-            query = out["query"]
-            entrezgene = out["entrezgene"]
+            query = out['query']
+            entrezgene = out['entrezgene']
             ncbi_ids.setdefault(query, []).append(entrezgene)
     # Retry missing
-    retry = [uniprot_ids[symbols.index(k)] for k in response["missing"]]
+    retry = [uniprot_ids[symbols.index(k)] for k in response['missing']]
     response = mg.querymany(retry, scopes='uniprot', fields='entrezgene',
                             species=taxid, returnall=True)
     for out in response['out']:
         if out.get("entrezgene") is not None:
-            query = out["query"]
-            entrezgene = out["entrezgene"]
+            query = out['query']
+            entrezgene = out['entrezgene']
             ncbi_ids.setdefault(query, []).append(entrezgene)
     ncbi_ids = unlist(ncbi_ids)
     return ncbi_ids
@@ -101,12 +93,12 @@ def parse_gaf(f):
     genesets = {}
     for rec in data:
         if not rec[0].startswith("!"):
-            _id = rec[4]                    # Primary ID is GO ID
+            _id = rec[4].replace(":", "_")  # Primary ID is GO ID
             if genesets.get(_id) is None:
                 genesets[_id] = {}          # Dict to hold annotations
-                genesets[_id]["_id"] = _id
-                genesets[_id]["is_public"] = True
-                genesets[_id]["taxid"] = rec[12].split("|")[0].replace(
+                genesets[_id]['_id'] = _id
+                genesets[_id]['is_public'] = True
+                genesets[_id]['taxid'] = rec[12].split("|")[0].replace(
                         "taxon:", "")
             uniprot = rec[1]
             symbol = rec[2]
@@ -131,43 +123,27 @@ def parse_gaf(f):
     return genesets
 
 
-def parse_obo(f):
-    """Parse gene ontology (.obo) file.
-    This file contains description and metadata for individual GO terms.
-    Return a dictionary of GO term metadata with GO ids as keys.
-    """
+def parse_ontology(f):
+    with open(f, 'r') as infile:
+        data = json.load(infile)
+    nodes = data['graphs'][0]['nodes']
     go_terms = {}
-    with open(f, 'r') as data:
-        record = False  # True if line is part of a record (not a header)
-        term_data = {}
-        for line in data:
-            line = line.replace("\n", "")
-            # End of a record
-            if line == "":
-                if record:
-                    _id = term_data['id']
-                    go_terms[_id] = term_data
-                    alt_id = term_data.get("alt_id")
-                    if alt_id is not None:
-                        # Add a duplicate entry with alt_id as key
-                        go_terms[alt_id] = term_data
-                record = False
-            #  Line is part of a record
-            if record:
-                key, value = line.split(": ", 1)
-                value = value.replace('"', '')
-                if value.find("!") != -1:               # Remove comments
-                    value = value.split(" ! ", 1)[0]
-                term_data[key] = value               # Store key-value pair
-            # Start of record
-            if line.startswith("[Term]"):
-                record = True
-                term_data = {}
+    for node in nodes:
+        url = node['id']
+        _id = url.split("/")[-1]
+        if not _id.startswith("GO_"):
+            continue
+        go_terms[_id] = {"id": _id.replace("_", ":"),
+                         "url": url,
+                         "name": node.get('lbl'),
+                         "type": node.get('type'),
+                         "definition": node['meta'].get("definition")}
+    go_terms = unlist(go_terms)
+    go_terms = dict_sweep(go_terms)
     return go_terms
 
 
 if __name__ == "__main__":
-    import json
 
     annotations = load_data("./test_data")
     for a in annotations:
