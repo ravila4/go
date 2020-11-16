@@ -13,7 +13,7 @@ def load_data(data_folder):
 
     # Gene annotation files
     for f in glob.glob(os.path.join(data_folder, "*.gaf.gz")):
-        docs = parse_gaf(f)
+        docs = parse_gene_annotations(f)
 
         # Join all gene sets and get NCBI IDs
         all_genes = set()
@@ -56,7 +56,7 @@ def load_data(data_folder):
             # Clean up data
             annotations = dict_sweep(annotations)
             annotations = unlist(annotations)
-            annotations["_id"] = annotations["_id"] + "_" + annotations["taxid"]
+            #annotations["_id"] = annotations["_id"] + "_" + annotations["taxid"]
             yield annotations
 
 
@@ -87,7 +87,7 @@ def get_NCBI_id(symbols, uniprot_ids, taxid):
     return ncbi_ids
 
 
-def parse_gaf(f):
+def parse_gene_annotations(f):
     """Parse a gene annotation (.gaf.gz) file."""
     data = tabfile_feeder(f, header=0)
     genesets = {}
@@ -95,11 +95,11 @@ def parse_gaf(f):
         if not rec[0].startswith("!"):
             _id = rec[4].replace(":", "_")  # Primary ID is GO ID
             if genesets.get(_id) is None:
-                genesets[_id] = {}          # Dict to hold annotations
-                genesets[_id]['_id'] = _id
-                genesets[_id]['is_public'] = True
-                genesets[_id]['taxid'] = rec[12].split("|")[0].replace(
-                        "taxon:", "")
+                taxid = rec[12].split("|")[0].replace("taxon:", "")
+                genesets[_id] = {"_id":  _id + "_" + taxid,
+                                 "is_public": True,
+                                 "taxid": taxid
+                                 }
             uniprot = rec[1]
             symbol = rec[2]
             qualifiers = rec[3].split("|")
@@ -117,7 +117,7 @@ def parse_gaf(f):
                 genesets[_id].setdefault("colocalized_genes", set()).add(
                         (uniprot, symbol))
             else:
-                # Default list: genes that belong to go term
+                # Default set: genes that belong to go term
                 genesets[_id].setdefault("genes", set()).add(
                         (uniprot, symbol))
     return genesets
