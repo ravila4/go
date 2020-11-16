@@ -136,8 +136,10 @@ def parse_ontology(f):
         go_terms[_id] = {"id": _id.replace("_", ":"),
                          "url": url,
                          "name": node.get('lbl'),
-                         "type": node.get('type'),
-                         "definition": node['meta'].get("definition")}
+                         "type": node.get('type')}
+        if node['meta'].get("definition"):
+            go_terms[_id]['definition'] = node['meta']['definition'].get('val')
+            go_terms[_id]['xrefs'] = node['meta']['definition'].get('xrefs')
     go_terms = unlist(go_terms)
     go_terms = dict_sweep(go_terms)
     return go_terms
