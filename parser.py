@@ -124,6 +124,7 @@ def parse_gaf(f):
 
 
 def parse_ontology(f):
+    "Get GO-term metadata from ontology JSON dump."
     with open(f, 'r') as infile:
         data = json.load(infile)
     nodes = data['graphs'][0]['nodes']
