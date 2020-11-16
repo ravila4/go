@@ -1,4 +1,3 @@
-from datetime import date
 import glob
 import os
 
@@ -30,15 +29,14 @@ def load_data(data_folder):
         # Add additional annotations
         for _id, annotations in docs.items():
             # Add additional annotations
-            annotations["creator"] = "Ricardo Avila"
-            annotations["date"] = date.today().isoformat()
             annotations["go"] = {}
             annotations["go"]["id"] = _id
             annotations["go"]["name"] = goterms[_id]["name"]
             annotations["go"]["type"] = goterms[_id]["namespace"]
             annotations["go"]["description"] = goterms[_id]["def"]
             if annotations.get("genes") is not None:
-                gene_dict = [{"uniprot": i, "symbol": j} for i, j in annotations["genes"]]
+                gene_dict = [{"uniprot": i, "symbol": j}
+                             for i, j in annotations["genes"]]
                 for d in gene_dict:
                     if NCBI_dict.get(d["symbol"]):
                         d["ncbigene"] = NCBI_dict.get(d["symbol"])
