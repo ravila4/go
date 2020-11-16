@@ -7,7 +7,7 @@
                      "http://current.geneontology.org/annotations/goa_pig.gaf.gz",
                      "http://current.geneontology.org/annotations/goa_cow.gaf.gz",
                      "http://current.geneontology.org/annotations/goa_chicken.gaf.gz",
-                     "http://current.geneontology.org/ontology/go.obo"],
+                     "http://current.geneontology.org/ontology/go.json"],
         "uncompress": false,
         "release": "version:get_release"
     },
