@@ -2,6 +2,7 @@ import glob
 import json
 import os
 
+from biothings.utils.dataload import alwayslist
 from biothings.utils.dataload import tabfile_feeder, dict_sweep, unlist
 import mygene
 
@@ -10,12 +11,12 @@ def load_data(data_folder):
     # Ontology data
     go_file = os.path.join(data_folder, "go.json")
     goterms = parse_ontology(go_file)
-
     # Gene annotation files
     for f in glob.glob(os.path.join(data_folder, "*.gaf.gz")):
+        print("Parsing {}".format(f))
         docs = parse_gene_annotations(f)
 
-        # Join all gene sets and get NCBI IDs
+        # Create gene ID cache. Join all gene sets and fetch ids.
         all_genes = set()
         for _id, annotations in docs.items():
             for key in ["genes", "excluded_genes", "contributing_genes",
@@ -24,67 +25,94 @@ def load_data(data_folder):
                     all_genes = all_genes | annotations[key]
         uniprot = [i for i, j in all_genes]
         symbols = [j for i, j in all_genes]
-        taxid = annotations["taxid"]
-        NCBI_dict = {} #get_NCBI_id(symbols, uniprot, taxid)
+        taxid = annotations['taxid']
+        genecache = get_gene_ids(symbols, uniprot, taxid)
 
-        # Add additional annotations
         for _id, annotations in docs.items():
-            # Add additional annotations
-            annotations["go"] = goterms[_id]
+            # Add ontology annotations
+            annotations['go'] = goterms[_id]
+            # Add gene sets
             if annotations.get("genes") is not None:
-                gene_dict = [{"uniprot": i, "symbol": j}
-                             for i, j in annotations["genes"]]
-                for d in gene_dict:
-                    if NCBI_dict.get(d["symbol"]):
-                        d["ncbigene"] = NCBI_dict.get(d["symbol"])
-                    elif NCBI_dict.get(d["uniprot"]):
-                        d["ncbigene"] = NCBI_dict.get(d["uniprot"])
-                annotations["genes"] = gene_dict
+                genes = []
+                for u, s in annotations['genes']:
+                    if genecache.get(u) is not None:
+                        genes += [g for g in genecache[u].values()]
+                    elif genecache.get(s) is not None:
+                        genes += [g for g in genecache[s].values()]
+                    else:
+                        genes += {'symbol': s, 'uniprot': u}
+                annotations['genes'] = genes
             else:
                 # No genes in set
                 continue
+
             for key in ["excluded_genes", "contributing_genes",
                         "colocalized_genes"]:
                 if annotations.get(key) is not None:
-                    gene_dict = [{"uniprot": i, "symbol": j} for i, j in annotations[key]]
-                    for d in gene_dict:
-                        if NCBI_dict.get(d["symbol"]):
-                            d["ncbigene"] = NCBI_dict.get(d["symbol"])
-                        elif NCBI_dict.get(d["uniprot"]):
-                            d["ncbigene"] = NCBI_dict.get(d["uniprot"])
-                    annotations[key] = gene_dict
+                    genes = []
+                    for u, s in annotations[key]:
+                        if genecache.get(u) is not None:
+                            genes += [g for g in genecache[u].values()]
+                        elif genecache.get(s) is not None:
+                            genes += [g for g in genecache[s].values()]
+                        else:
+                            genes += {'symbol': s, 'uniprot': u}
+                    annotations[key] = genes
             # Clean up data
             annotations = dict_sweep(annotations)
             annotations = unlist(annotations)
-            #annotations["_id"] = annotations["_id"] + "_" + annotations["taxid"]
             yield annotations
 
 
-def get_NCBI_id(symbols, uniprot_ids, taxid):
-    """Fetch NCBI id from gene symbols using mygene.info.
-    If a gene symbol matches more than one NCBI id, all duplicate ids are kept.
-    Gene symbols that are not found are retried using Uniprot ID.
-    """
+def get_gene_ids(symbols, uniprot_ids, taxid):
+    """Fetch NCBI, Ensembl, and gene names from UniProt ids or gene symbol."""
     mg = mygene.MyGeneInfo()
-    response = mg.querymany(symbols, scopes='symbol', fields='entrezgene',
+    fields = 'entrezgene,ensembl.gene,name,symbol'
+    # Fetch ids from  UniProt
+    response = mg.querymany(uniprot_ids, scopes='uniprot', fields=fields,
                             species=taxid, returnall=True)
-    ncbi_ids = {}
+    genes = {}
     for out in response['out']:
-        if out.get("entrezgene") is not None:
+        if out.get("_id") is not None:
             query = out['query']
-            entrezgene = out['entrezgene']
-            ncbi_ids.setdefault(query, []).append(entrezgene)
-    # Retry missing
-    retry = [uniprot_ids[symbols.index(k)] for k in response['missing']]
-    response = mg.querymany(retry, scopes='uniprot', fields='entrezgene',
+            geneid = out['_id']
+            hits = genes.setdefault(query, {})
+            hits[geneid] = {"mygene_id": geneid,
+                            "uniprot": query,
+                            "symbol": out.get('symbol'),
+                            "name": out.get('name')}
+            if out.get("entrezgene") is not None:
+                hits[geneid].setdefault('ncbigene', [])
+                if out['entrezgene'] not in hits[geneid]['ncbigene']:
+                    hits[geneid]['ncbigene'].append(out['entrezgene'])
+            if out.get("ensembl") is not None:
+                hits[geneid].setdefault('ensemblgene', [])
+                hits[geneid]['ensemblgene'] = hits[geneid]['ensemblgene'] + \
+                    [i['gene'] for i in alwayslist(out['ensembl'])]
+    # Retry missing using gene symbol
+    retry = [symbols[uniprot_ids.index(k)] for k in response['missing']]
+    response = mg.querymany(retry, scopes='symbol', fields=fields,
                             species=taxid, returnall=True)
     for out in response['out']:
-        if out.get("entrezgene") is not None:
+        if out.get("_id") is not None:
             query = out['query']
-            entrezgene = out['entrezgene']
-            ncbi_ids.setdefault(query, []).append(entrezgene)
-    ncbi_ids = unlist(ncbi_ids)
-    return ncbi_ids
+            geneid = out['_id']
+            hits = genes.setdefault(query, {})
+            hits[geneid] = {"mygene_id": geneid,
+                            "uniprot": uniprot_ids[symbols.index(query)],
+                            "symbol": out['symbol'],
+                            "name": out.get('name')}
+            if out.get("entrezgene") is not None:
+                hits[geneid].setdefault('ncbigene', [])
+                if out['entrezgene'] not in hits[geneid]['ncbigene']:
+                    hits[geneid]['ncbigene'].append(out['entrezgene'])
+            if out.get("ensembl") is not None:
+                hits[geneid].setdefault('ensemblgene', [])
+                hits[geneid]['ensemblgene'] = hits[geneid]['ensemblgene'] + \
+                    [i['gene'] for i in alwayslist(out['ensembl'])]
+    genes = unlist(genes)
+    genes = dict_sweep(genes)
+    return genes
 
 
 def parse_gene_annotations(f):
@@ -93,13 +121,12 @@ def parse_gene_annotations(f):
     genesets = {}
     for rec in data:
         if not rec[0].startswith("!"):
-            _id = rec[4].replace(":", "_")  # Primary ID is GO ID
+            _id = rec[4].replace(":", "_")
             if genesets.get(_id) is None:
                 taxid = rec[12].split("|")[0].replace("taxon:", "")
                 genesets[_id] = {"_id":  _id + "_" + taxid,
                                  "is_public": True,
-                                 "taxid": taxid
-                                 }
+                                 "taxid": taxid}
             uniprot = rec[1]
             symbol = rec[2]
             qualifiers = rec[3].split("|")
