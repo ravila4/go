@@ -1,6 +1,9 @@
 {
     "version": "0.1",
     "requires" : ["biothings", "mygene", "requests"],
+    "__metadata__": {
+        "license_url": "http://geneontology.org/docs/go-citation-policy/",
+        "url": "http://geneontology.org"},
     "dumper": {
         "data_url": ["http://current.geneontology.org/annotations/goa_human.gaf.gz",
                      "http://current.geneontology.org/annotations/goa_dog.gaf.gz",
@@ -9,7 +12,8 @@
                      "http://current.geneontology.org/annotations/goa_chicken.gaf.gz",
                      "http://current.geneontology.org/ontology/go.json"],
         "uncompress": false,
-        "release": "version:get_release"
+        "release": "version:get_release",
+        "schedule": "0 2 30,14 * *"
     },
     "uploader" : {
         "parser": "parser:load_data",
