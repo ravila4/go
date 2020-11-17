@@ -59,7 +59,6 @@ def load_data(data_folder):
                             genes += {'symbol': s, 'uniprot': u}
                     annotations[key] = genes
             # Clean up data
-            annotations = dict_sweep(annotations)
             annotations = unlist(annotations)
             yield annotations
 
@@ -111,7 +110,7 @@ def get_gene_ids(symbols, uniprot_ids, taxid):
                 hits[geneid]['ensemblgene'] = hits[geneid]['ensemblgene'] + \
                     [i['gene'] for i in alwayslist(out['ensembl'])]
     genes = unlist(genes)
-    genes = dict_sweep(genes)
+    genes = dict_sweep(genes, vals=[None, 'null'])
     return genes
 
 
