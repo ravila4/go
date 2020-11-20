@@ -39,8 +39,8 @@ def load_data(data_folder):
                         genes += [g for g in genecache[u].values()]
                     elif genecache.get(s) is not None:
                         genes += [g for g in genecache[s].values()]
-                    else:
-                        genes += {'symbol': s, 'uniprot': u}
+                    #else:
+                    #    genes += {'symbol': s, 'uniprot': u}
                 annotations['genes'] = genes
             else:
                 # No genes in set
@@ -50,14 +50,14 @@ def load_data(data_folder):
                         "colocalized_genes"]:
                 if annotations.get(key) is not None:
                     genes = []
-                    for u, s in annotations[key]:
+                    for u, s in annotations.pop(key):
                         if genecache.get(u) is not None:
                             genes += [g for g in genecache[u].values()]
                         elif genecache.get(s) is not None:
                             genes += [g for g in genecache[s].values()]
-                        else:
-                            genes += {'symbol': s, 'uniprot': u}
-                    annotations[key] = genes
+                        #else:
+                        #    genes += {'symbol': s, 'uniprot': u}
+                    annotations['go'][key] = genes
             # Clean up data
             annotations = unlist(annotations)
             yield annotations
