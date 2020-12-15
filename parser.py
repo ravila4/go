@@ -68,7 +68,7 @@ def parse_gene_annotations(f):
         if not rec[0].startswith("!"):
             _id = rec[4].replace(":", "_")
             if genesets.get(_id) is None:
-                taxid = rec[12].split("|")[0].replace("taxon:", "")
+                taxid = int(rec[12].split("|")[0].replace("taxon:", ""))
                 genesets[_id] = {"_id":  _id + "_" + taxid,
                                  "is_public": True,
                                  "taxid": taxid}
