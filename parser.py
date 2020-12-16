@@ -69,7 +69,7 @@ def parse_gene_annotations(f):
             _id = rec[4].replace(":", "_")
             if genesets.get(_id) is None:
                 taxid = int(rec[12].split("|")[0].replace("taxon:", ""))
-                genesets[_id] = {"_id":  _id + "_" + taxid,
+                genesets[_id] = {"_id":  _id + "_" + str(taxid),
                                  "is_public": True,
                                  "taxid": taxid}
             uniprot = rec[1]
