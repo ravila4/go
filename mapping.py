@@ -1,4 +1,4 @@
-def get_customized_mapping():
+def get_customized_mapping(cls):
     mapping = {
         "is_public": {
             "type": "boolean"
